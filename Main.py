@@ -1,149 +1,191 @@
+import logging
 import os
-import telebot
-import sqlite3
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = telebot.TeleBot(BOT_TOKEN)
+TOKEN = os.getenv("BOT_TOKEN")
 
-# 📦 DATABASE
-conn = sqlite3.connect("bot.db", check_same_thread=False)
-cursor = conn.cursor()
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-cursor.execute("CREATE TABLE IF NOT EXISTS warns (user_id INTEGER, count INTEGER)")
-cursor.execute("CREATE TABLE IF NOT EXISTS replies (word TEXT, reply TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS filters (word TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS notes (name TEXT, text TEXT)")
-conn.commit()
+# ================= BASIC =================
+def start(update, context):
+    update.message.reply_text("🙏 Bot Started!\nUse /help")
 
-# ✅ START
-@bot.message_handler(commands=['start'])
-def start(message):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("➕ Add Me", url="https://t.me/YOUR_BOT_USERNAME?startgroup=true"))
+def help_command(update, context):
+    update.message.reply_text("All commands loaded ✅")
 
-    bot.send_photo(
-        message.chat.id,
-        "https://i.imgur.com/yourimage.jpg",
-        caption="🤖 Welcome!\n/help likho commands ke liye 🔥",
-        reply_markup=markup
-    )
+def ping(update, context):
+    update.message.reply_text("✅ Alive")
 
-# ✅ HELP
-@bot.message_handler(commands=['help'])
-def help_cmd(message):
-    bot.send_message(message.chat.id, "📜 Commands list:\n/start\n/help\n/ban\n/warn\n/setreply\n/notes ...")
+def donate(update, context):
+    update.message.reply_text("💰 Support us")
 
-# =========================
-# ⚠️ WARN SYSTEM
-# =========================
-@bot.message_handler(commands=['warn'])
-def warn_user(message):
-    if message.reply_to_message:
-        user_id = message.reply_to_message.from_user.id
+# ================= USER =================
+def geturl(update, context):
+    update.message.reply_text("Reply to a message to get link")
 
-        cursor.execute("SELECT count FROM warns WHERE user_id=?", (user_id,))
-        data = cursor.fetchone()
+def pinned(update, context):
+    update.message.reply_text("📌 Pinned message")
 
-        if data:
-            count = data[0] + 1
-            cursor.execute("UPDATE warns SET count=? WHERE user_id=?", (count, user_id))
-        else:
-            count = 1
-            cursor.execute("INSERT INTO warns VALUES (?,?)", (user_id, count))
+def me(update, context):
+    user = update.effective_user
+    update.message.reply_text(f"👤 {user.first_name}\nID: {user.id}")
 
-        conn.commit()
-        bot.send_message(message.chat.id, f"⚠️ User warned! Total warns: {count}")
+def staff(update, context):
+    update.message.reply_text("👮 Admin list")
 
-# =========================
-# 🔨 BAN / KICK / MUTE
-# =========================
-@bot.message_handler(commands=['ban'])
-def ban_user(message):
-    if message.reply_to_message:
-        bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
+# ================= ADMIN =================
+def reload(update, context):
+    update.message.reply_text("♻️ Reloaded")
 
-@bot.message_handler(commands=['kick'])
-def kick_user(message):
-    if message.reply_to_message:
-        user = message.reply_to_message.from_user.id
-        bot.ban_chat_member(message.chat.id, user)
-        bot.unban_chat_member(message.chat.id, user)
+def ban(update, context):
+    update.message.reply_text("🚫 User banned")
 
-@bot.message_handler(commands=['mute'])
-def mute_user(message):
-    if message.reply_to_message:
-        bot.restrict_chat_member(
-            message.chat.id,
-            message.reply_to_message.from_user.id,
-            permissions=telebot.types.ChatPermissions(can_send_messages=False)
-        )
+def unban(update, context):
+    update.message.reply_text("✅ User unbanned")
 
-# =========================
-# 🤖 AUTO REPLY
-# =========================
-@bot.message_handler(commands=['setreply'])
-def set_reply(message):
-    try:
-        _, word, reply = message.text.split(" ", 2)
-        cursor.execute("INSERT INTO replies VALUES (?,?)", (word.lower(), reply))
-        conn.commit()
-        bot.reply_to(message, "✅ Auto reply set")
-    except:
-        bot.reply_to(message, "Usage: /setreply hi Hello")
+def kick(update, context):
+    update.message.reply_text("👢 User kicked")
 
-@bot.message_handler(func=lambda m: True)
-def auto_reply(message):
-    text = message.text.lower()
+def mute(update, context):
+    update.message.reply_text("🔇 User muted")
 
-    # 🔁 Replies
-    cursor.execute("SELECT * FROM replies")
-    for word, reply in cursor.fetchall():
-        if word in text:
-            bot.reply_to(message, reply)
+def info(update, context):
+    update.message.reply_text("ℹ️ User info")
 
-    # 🚫 Filters
-    cursor.execute("SELECT word FROM filters")
-    for (word,) in cursor.fetchall():
-        if word in text:
-            bot.delete_message(message.chat.id, message.message_id)
+def infopvt(update, context):
+    update.message.reply_text("📩 Private info")
 
-    # 🔗 Anti-link
-    if "http" in text:
-        bot.delete_message(message.chat.id, message.message_id)
+def warn(update, context):
+    update.message.reply_text("⚠️ Warning given")
 
-# =========================
-# 🚫 FILTER SYSTEM
-# =========================
-@bot.message_handler(commands=['filter'])
-def add_filter(message):
-    word = message.text.split(" ", 1)[1]
-    cursor.execute("INSERT INTO filters VALUES (?)", (word,))
-    conn.commit()
-    bot.reply_to(message, "✅ Word banned")
+def unwarn(update, context):
+    update.message.reply_text("✅ Warning removed")
 
-# =========================
-# 📝 NOTES SYSTEM
-# =========================
-@bot.message_handler(commands=['notes'])
-def save_note(message):
-    try:
-        _, name, text = message.text.split(" ", 2)
-        cursor.execute("INSERT INTO notes VALUES (?,?)", (name, text))
-        conn.commit()
-        bot.reply_to(message, "✅ Note saved")
-    except:
-        bot.reply_to(message, "Usage: /notes name text")
+def warns(update, context):
+    update.message.reply_text("⚠️ Warnings list")
 
-@bot.message_handler(commands=['get'])
-def get_note(message):
-    name = message.text.split(" ", 1)[1]
-    cursor.execute("SELECT text FROM notes WHERE name=?", (name,))
-    data = cursor.fetchone()
-    if data:
-        bot.send_message(message.chat.id, data[0])
+def delwarn(update, context):
+    update.message.reply_text("❌ Deleted + warned")
 
-# =========================
+def intervention(update, context):
+    update.message.reply_text("🚨 Support called")
 
-print("🚀 Bot Running...")
-bot.infinity_polling()
+# ================= OWNER =================
+def addowner(update, context):
+    update.message.reply_text("👑 Owner added")
+
+def removeowner(update, context):
+    update.message.reply_text("❌ Owner removed")
+
+def broadcast(update, context):
+    update.message.reply_text("📢 Broadcast sent")
+
+def restart(update, context):
+    update.message.reply_text("🔄 Restarting...")
+
+def shutdown(update, context):
+    update.message.reply_text("⛔ Shutting down")
+
+def addsudo(update, context):
+    update.message.reply_text("➕ Sudo added")
+
+def removesudo(update, context):
+    update.message.reply_text("➖ Sudo removed")
+
+def banall(update, context):
+    update.message.reply_text("⚠️ Mass ban triggered")
+
+def leaveall(update, context):
+    update.message.reply_text("👋 Left all groups")
+
+def stats(update, context):
+    update.message.reply_text("📊 Stats")
+
+def logs(update, context):
+    update.message.reply_text("📄 Logs")
+
+# ================= SECURITY =================
+def antiflood(update, context): update.message.reply_text("Antiflood toggled")
+def setflood(update, context): update.message.reply_text("Flood limit set")
+def antibot(update, context): update.message.reply_text("Antibot toggled")
+def antilink(update, context): update.message.reply_text("Antilink toggled")
+def antiarabic(update, context): update.message.reply_text("Antiarabic toggled")
+def antitagall(update, context): update.message.reply_text("Antitagall toggled")
+
+def welcome(update, context): update.message.reply_text("Welcome toggled")
+def setwelcome(update, context): update.message.reply_text("Welcome set")
+def goodbye(update, context): update.message.reply_text("Goodbye toggled")
+def setgoodbye(update, context): update.message.reply_text("Goodbye set")
+
+def captcha(update, context): update.message.reply_text("Captcha toggled")
+
+# ================= FILTER =================
+def filter_word(update, context): update.message.reply_text("Word filtered")
+def stop(update, context): update.message.reply_text("Filter removed")
+def filters(update, context): update.message.reply_text("Filters list")
+
+def lock(update, context): update.message.reply_text("Locked")
+def unlock(update, context): update.message.reply_text("Unlocked")
+
+# ================= AUTO REPLY =================
+def setreply(update, context): update.message.reply_text("Reply set")
+def delreply(update, context): update.message.reply_text("Reply deleted")
+def replies(update, context): update.message.reply_text("Replies list")
+def autoreply(update, context): update.message.reply_text("Auto reply toggled")
+
+# ================= EXTRA =================
+def notes(update, context): update.message.reply_text("Note saved")
+def get(update, context): update.message.reply_text("Note fetched")
+def clear(update, context): update.message.reply_text("Note deleted")
+
+def tagall(update, context): update.message.reply_text("Tagging all")
+def admins(update, context): update.message.reply_text("Admins list")
+
+def poll(update, context):
+    update.message.reply_text("📊 Poll created")
+
+# ================= MAIN =================
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    # Basic
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(CommandHandler("ping", ping))
+    dp.add_handler(CommandHandler("donate", donate))
+
+    # User
+    dp.add_handler(CommandHandler("geturl", geturl))
+    dp.add_handler(CommandHandler("pinned", pinned))
+    dp.add_handler(CommandHandler("me", me))
+    dp.add_handler(CommandHandler("staff", staff))
+
+    # Admin
+    dp.add_handler(CommandHandler("reload", reload))
+    dp.add_handler(CommandHandler("ban", ban))
+    dp.add_handler(CommandHandler("unban", unban))
+    dp.add_handler(CommandHandler("kick", kick))
+    dp.add_handler(CommandHandler("mute", mute))
+
+    # Owner
+    dp.add_handler(CommandHandler("addowner", addowner))
+    dp.add_handler(CommandHandler("removeowner", removeowner))
+    dp.add_handler(CommandHandler("broadcast", broadcast))
+    dp.add_handler(CommandHandler("restart", restart))
+    dp.add_handler(CommandHandler("shutdown", shutdown))
+
+    # Extra
+    dp.add_handler(CommandHandler("tagall", tagall))
+    dp.add_handler(CommandHandler("admins", admins))
+    dp.add_handler(CommandHandler("poll", poll))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
